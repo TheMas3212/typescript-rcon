@@ -25,6 +25,8 @@ export declare class RCon extends EventEmitter implements IRCon {
     private idCounter;
     private partialPacket;
     private bufferedPackets;
+    private reconnecting;
+    private packetQueue;
     constructor(opts: ConnectionOptions);
     connect(): RCon;
     disconnect(): void;
@@ -34,6 +36,7 @@ export declare class RCon extends EventEmitter implements IRCon {
     private readData;
     private parsePacket;
     private buildPacket;
+    private queuePacket;
     private sendPacket;
     private sendServerDataAuth;
     private sendServerExecCommand;

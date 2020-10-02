@@ -36,7 +36,9 @@ class RCon extends events_1.EventEmitter {
         });
     }
     connect() {
+        this.reconnecting = false;
         this.bufferedPackets = [];
+        this.packetQueue = [];
         switch (this.options.type) {
             case 'tcp': {
                 const socket = net_1.createConnection({
@@ -70,8 +72,9 @@ class RCon extends events_1.EventEmitter {
         this.stream.end();
     }
     reconnect() {
-        if (this.options.reconnect) {
+        if (this.options.reconnect && !this.reconnecting) {
             this.disconnect();
+            this.reconnecting = true;
             setTimeout(this.connect.bind(this), 300);
         }
         ;
@@ -145,24 +148,36 @@ class RCon extends events_1.EventEmitter {
             buffer: buffer
         };
     }
-    sendPacket(packet) {
+    queuePacket(packet) {
+        let trigger = false;
+        if (this.packetQueue.length === 0) {
+            trigger = true;
+        }
+        this.packetQueue.push(packet);
+        if (trigger)
+            setTimeout(this.sendPacket.bind(this), 100);
+    }
+    sendPacket() {
+        const packet = this.packetQueue.shift();
         this.stream.write(packet.buffer);
+        if (this.packetQueue.length !== 0)
+            setTimeout(this.sendPacket.bind(this), 100);
     }
     sendServerDataAuth() {
         const packet = this.buildPacket(3, this.options.password);
-        this.sendPacket(packet);
+        this.queuePacket(packet);
     }
     sendServerExecCommand(command) {
         return new Promise((resolve, reject) => {
             const packet = this.buildPacket(2, Buffer.from(command));
-            this.sendPacket(packet);
+            this.queuePacket(packet);
             const packet2 = this.buildPacket(9, Buffer.allocUnsafe(0));
-            this.sendPacket(packet2);
+            this.queuePacket(packet2);
             this.once(`id-${packet.id}`, resolve);
         });
     }
     authenticate() {
-        this.sendServerDataAuth();
+        setTimeout(this.sendServerDataAuth.bind(this), 100);
     }
     ;
     streamError(e) {

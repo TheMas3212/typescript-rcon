@@ -36,6 +36,8 @@ export class RCon extends EventEmitter implements IRCon {
   private idCounter: number;
   private partialPacket: Packet;
   private bufferedPackets: Packet[];
+  private reconnecting: boolean;
+  private packetQueue: Packet[];
   constructor(opts: ConnectionOptions) {
     switch (opts.type) {
       case 'tcp': {
@@ -66,7 +68,9 @@ export class RCon extends EventEmitter implements IRCon {
     });
   }
   public connect(): RCon {
+    this.reconnecting = false;
     this.bufferedPackets = [];
+    this.packetQueue = [];
     switch (this.options.type) {
       case 'tcp': {
         const socket = createConnection({
@@ -100,8 +104,9 @@ export class RCon extends EventEmitter implements IRCon {
     this.stream.end();
   }
   public reconnect() {
-    if (this.options.reconnect) {
+    if (this.options.reconnect && !this.reconnecting) {
       this.disconnect();
+      this.reconnecting = true;
       setTimeout(this.connect.bind(this), 300);
     };
   };
@@ -175,25 +180,35 @@ export class RCon extends EventEmitter implements IRCon {
     };
   }
 
-  private sendPacket(packet) {
+  private queuePacket(packet) {
+    let trigger = false;
+    if (this.packetQueue.length === 0) {
+      trigger = true;
+    }
+    this.packetQueue.push(packet);
+    if (trigger) setTimeout(this.sendPacket.bind(this), 100);
+  }
+  private sendPacket() {
+    const packet = this.packetQueue.shift();
     this.stream.write(packet.buffer);
+    if (this.packetQueue.length !== 0) setTimeout(this.sendPacket.bind(this), 100);
   }
   private sendServerDataAuth() {
     const packet = this.buildPacket(3, this.options.password);
-    this.sendPacket(packet);
+    this.queuePacket(packet);
   }
   private sendServerExecCommand(command: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const packet = this.buildPacket(2, Buffer.from(command));
-      this.sendPacket(packet);
+      this.queuePacket(packet);
       const packet2 = this.buildPacket(9, Buffer.allocUnsafe(0));
-      this.sendPacket(packet2);
+      this.queuePacket(packet2);
       this.once(`id-${packet.id}`, resolve);
     });
   }
 
   private authenticate() {
-    this.sendServerDataAuth();
+    setTimeout(this.sendServerDataAuth.bind(this), 100);
   };
   private streamError(e: Error) {
     this.emit('error', e);
