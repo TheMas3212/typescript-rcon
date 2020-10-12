@@ -107,6 +107,8 @@ class RCon extends events_1.EventEmitter {
         buff.write(packet.body, 8);
         this.parsePacket(packet);
         this.partialPacket = null;
+        if (this.stream.readable)
+            setImmediate(this.readData.bind(this));
     }
     parsePacket(packet) {
         switch (packet.type) {
